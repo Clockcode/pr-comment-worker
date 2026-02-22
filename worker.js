@@ -97,7 +97,7 @@ async function main() {
   const argv = process.argv.slice(2);
   const dryRun = argv.includes('--dry-run');
 
-  const configPath = path.join(process.cwd(), 'pr-comment-worker', 'config.json');
+  const configPath = path.join(path.dirname(new URL(import.meta.url).pathname), 'config.json');
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
   const state = loadState();
