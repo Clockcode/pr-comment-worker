@@ -11,6 +11,7 @@ import {
   createIssueComment
 } from './github.js';
 import { getOpenAIClient, generatePatch } from './ai.js';
+import { enqueueNotification } from './notify.js';
 
 function log(obj) {
   console.log(JSON.stringify({ ts: new Date().toISOString(), ...obj }));
@@ -263,6 +264,14 @@ async function main() {
         const commitUrl = `https://github.com/${repoFullName}/commit/${sha}`;
         createIssueComment(repoFullName, prNumber, `Addressed in commit: ${commitUrl}`);
         log({ event: 'success', prNumber, sha, commitUrl });
+        enqueueNotification({
+          level: 'info',
+          kind: 'success',
+          repo: repoFullName,
+          prNumber,
+          commentId: String(selected.id),
+          commitUrl
+        });
       } else {
         createIssueComment(repoFullName, prNumber, 'No code changes were needed.');
         log({ event: 'no_changes', prNumber });
@@ -280,6 +289,12 @@ async function main() {
 }
 
 main().catch(err => {
-  log({ event: 'fatal', error: String(err) });
+  const msg = String(err);
+  log({ event: 'fatal', error: msg });
+  try {
+    enqueueNotification({ level: 'error', kind: 'fatal', error: msg });
+  } catch {
+    // ignore
+  }
   process.exitCode = 1;
 });
