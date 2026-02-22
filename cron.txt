@@ -1,0 +1,2 @@
+# Every 10 minutes
+*/10 * * * * /usr/bin/env node /Users/openclaw/.openclaw/workspace/pr-comment-worker/worker.js >> /Users/openclaw/.openclaw/logs/pr-comment-worker.log 2>&1
