@@ -34,10 +34,23 @@ function resetWorkspace(repoPath) {
 }
 
 function checkoutPrBranch(repoPath, branch) {
-  // Ensure we are not currently on the target branch before fetching/creating it.
-  try { sh('git checkout main', { cwd: repoPath }); } catch {}
+  // Always operate on the PR's head branch.
+  // Avoid fetching into a checked-out branch; fetch remote then check out from origin/<branch>.
   sh('git fetch origin', { cwd: repoPath });
-  sh(`git checkout ${branch}`, { cwd: repoPath });
+
+  // If origin/<branch> exists, base local branch on it.
+  try {
+    sh(`git show-ref --verify --quiet refs/remotes/origin/${branch}`, { cwd: repoPath });
+    sh(`git checkout -B ${branch} origin/${branch}`, { cwd: repoPath });
+  } catch {
+    // Fallback: try to check out existing local branch, otherwise create from remote branch ref.
+    try {
+      sh(`git checkout ${branch}`, { cwd: repoPath });
+    } catch {
+      sh(`git checkout -b ${branch}`, { cwd: repoPath });
+    }
+  }
+
   sh('git pull --rebase', { cwd: repoPath });
 }
 
@@ -194,9 +207,7 @@ async function main() {
       } catch (e) {
         // PR branch might not exist locally; fetch and retry
         try {
-          // Make sure we're not currently on the branch when fetching it.
-          try { sh('git checkout main', { cwd: repoPath }); } catch {}
-          sh(`git fetch origin ${branch}:${branch}`, { cwd: repoPath });
+          sh(`git fetch origin ${branch}`, { cwd: repoPath });
           checkoutPrBranch(repoPath, branch);
         } catch (e2) {
           log({ event: 'error', stage: 'checkout', prNumber, branch, error: String(e2) });
