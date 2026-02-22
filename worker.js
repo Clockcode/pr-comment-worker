@@ -97,6 +97,8 @@ function selectFirstValidComment({ comments, processedIds, botLogin }) {
 async function main() {
   const argv = process.argv.slice(2);
   const dryRun = argv.includes('--dry-run');
+  const backfillPrArgIndex = argv.indexOf('--backfill-pr');
+  const backfillPr = backfillPrArgIndex >= 0 ? Number(argv[backfillPrArgIndex + 1]) : null;
 
   const configPath = path.join(path.dirname(new URL(import.meta.url).pathname), 'config.json');
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -104,7 +106,7 @@ async function main() {
   const state = loadState();
   const processed = new Set(state.processedCommentIds.map(String));
 
-  log({ event: 'run_start', lastCursor: state.lastCursor, dryRun });
+  log({ event: 'run_start', lastCursor: state.lastCursor, dryRun, backfillPr });
 
   // Determine bot login from gh
   const botLogin = sh('gh api user --jq .login').trim();
@@ -125,16 +127,19 @@ async function main() {
 
     for (const pr of prs.sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt))) {
       const prNumber = pr.number;
+      if (backfillPr && prNumber !== backfillPr) continue;
 
       let issueComments = [];
       let reviewComments = [];
+      const sinceISO = backfillPr ? new Date(0).toISOString() : state.lastCursor;
+
       try {
-        issueComments = listIssueCommentsForPr(repoFullName, prNumber, state.lastCursor);
+        issueComments = listIssueCommentsForPr(repoFullName, prNumber, sinceISO);
       } catch (e) {
         log({ event: 'error', stage: 'listIssueComments', prNumber, error: String(e) });
       }
       try {
-        reviewComments = listReviewCommentsForPr(repoFullName, prNumber, state.lastCursor);
+        reviewComments = listReviewCommentsForPr(repoFullName, prNumber, sinceISO);
       } catch (e) {
         log({ event: 'error', stage: 'listReviewComments', prNumber, error: String(e) });
       }
