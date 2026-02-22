@@ -34,6 +34,9 @@ function resetWorkspace(repoPath) {
 }
 
 function checkoutPrBranch(repoPath, branch) {
+  // Ensure we are not currently on the target branch before fetching/creating it.
+  try { sh('git checkout main', { cwd: repoPath }); } catch {}
+  sh('git fetch origin', { cwd: repoPath });
   sh(`git checkout ${branch}`, { cwd: repoPath });
   sh('git pull --rebase', { cwd: repoPath });
 }
@@ -88,6 +91,8 @@ function selectFirstValidComment({ comments, processedIds, botLogin }) {
   for (const c of sorted) {
     const id = String(c.id);
     if (processedIds.has(id)) continue;
+    // Skip any bot-authored comment (including GitHub/Vercel bots) and our own login.
+    if (c.user?.type === 'Bot') continue;
     if (c.user?.login === botLogin) continue;
     return c;
   }
@@ -189,6 +194,8 @@ async function main() {
       } catch (e) {
         // PR branch might not exist locally; fetch and retry
         try {
+          // Make sure we're not currently on the branch when fetching it.
+          try { sh('git checkout main', { cwd: repoPath }); } catch {}
           sh(`git fetch origin ${branch}:${branch}`, { cwd: repoPath });
           checkoutPrBranch(repoPath, branch);
         } catch (e2) {
