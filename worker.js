@@ -8,7 +8,8 @@ import {
   listOpenPulls,
   listIssueCommentsForPr,
   listReviewCommentsForPr,
-  createIssueComment
+  createIssueComment,
+  replyToReviewComment
 } from './github.js';
 import { getOpenAIClient, generatePatch } from './ai.js';
 import { enqueueNotification } from './notify.js';
@@ -171,7 +172,8 @@ async function main() {
           created_at: c.created_at,
           body: c.body,
           user: c.user,
-          prNumber
+          prNumber,
+          html_url: c.html_url
         });
       }
       for (const c of reviewComments) {
@@ -181,7 +183,8 @@ async function main() {
           created_at: c.created_at,
           body: c.body,
           user: c.user,
-          prNumber
+          prNumber,
+          html_url: c.html_url
         });
       }
 
@@ -242,7 +245,14 @@ async function main() {
           applyPatch(repoPath, patch);
         } catch (e2) {
           if (!dryRun) {
-            createIssueComment(repoFullName, prNumber, 'Failed to apply patch cleanly. Please rebase or clarify the change.');
+            const msg = selected.kind === 'review_comment'
+              ? 'Failed to apply patch cleanly. Please rebase or clarify the change.'
+              : `@${selected.user?.login} Failed to apply patch cleanly. Please rebase or clarify the change.\n\n(Replying to: ${selected.html_url || 'comment'})`;
+            if (selected.kind === 'review_comment') {
+              replyToReviewComment(repoFullName, prNumber, selected.id, msg);
+            } else {
+              createIssueComment(repoFullName, prNumber, msg);
+            }
           }
           processed.add(String(selected.id));
           saveState({ lastCursor: nowISO, processedCommentIds: Array.from(processed) });
@@ -254,9 +264,16 @@ async function main() {
       try {
         runChecks(repoPath);
       } catch (e) {
-        const msg = 'Lint/build failed after applying the change. Please check logs locally.';
+        const shortMsg = 'Lint/build failed after applying the change.';
+        const msg = selected.kind === 'review_comment'
+          ? `${shortMsg} Please check CI/logs and clarify desired behavior if needed.`
+          : `@${selected.user?.login} ${shortMsg} Please check CI/logs and clarify desired behavior if needed.\n\n(Replying to: ${selected.html_url || 'comment'})`;
         if (!dryRun) {
-          createIssueComment(repoFullName, prNumber, msg);
+          if (selected.kind === 'review_comment') {
+            replyToReviewComment(repoFullName, prNumber, selected.id, msg);
+          } else {
+            createIssueComment(repoFullName, prNumber, msg);
+          }
         }
         log({ event: 'checks_failed', prNumber, error: String(e) });
         processed.add(String(selected.id));
@@ -276,7 +293,16 @@ async function main() {
       try {
         sha = commitAndPush(repoPath);
       } catch (e) {
-        createIssueComment(repoFullName, prNumber, 'Push failed (permission or authentication issue).');
+        if (!dryRun) {
+          const msg = selected.kind === 'review_comment'
+            ? 'Push failed (permission or authentication issue).'
+            : `@${selected.user?.login} Push failed (permission or authentication issue).\n\n(Replying to: ${selected.html_url || 'comment'})`;
+          if (selected.kind === 'review_comment') {
+            replyToReviewComment(repoFullName, prNumber, selected.id, msg);
+          } else {
+            createIssueComment(repoFullName, prNumber, msg);
+          }
+        }
         log({ event: 'push_failed', prNumber, error: String(e) });
         processed.add(String(selected.id));
         saveState({ lastCursor: nowISO, processedCommentIds: Array.from(processed) });
@@ -285,7 +311,18 @@ async function main() {
 
       if (sha) {
         const commitUrl = `https://github.com/${repoFullName}/commit/${sha}`;
-        createIssueComment(repoFullName, prNumber, `Addressed in commit: ${commitUrl}`);
+        const msg = selected.kind === 'review_comment'
+          ? `Addressed in commit: ${commitUrl}`
+          : `@${selected.user?.login} Addressed in commit: ${commitUrl}\n\n(Replying to: ${selected.html_url || 'comment'})`;
+
+        if (!dryRun) {
+          if (selected.kind === 'review_comment') {
+            replyToReviewComment(repoFullName, prNumber, selected.id, msg);
+          } else {
+            createIssueComment(repoFullName, prNumber, msg);
+          }
+        }
+
         log({ event: 'success', prNumber, sha, commitUrl });
         enqueueNotification({
           level: 'info',
@@ -296,7 +333,16 @@ async function main() {
           commitUrl
         });
       } else {
-        createIssueComment(repoFullName, prNumber, 'No code changes were needed.');
+        const msg = selected.kind === 'review_comment'
+          ? 'No code changes were needed.'
+          : `@${selected.user?.login} No code changes were needed.\n\n(Replying to: ${selected.html_url || 'comment'})`;
+        if (!dryRun) {
+          if (selected.kind === 'review_comment') {
+            replyToReviewComment(repoFullName, prNumber, selected.id, msg);
+          } else {
+            createIssueComment(repoFullName, prNumber, msg);
+          }
+        }
         log({ event: 'no_changes', prNumber });
       }
 

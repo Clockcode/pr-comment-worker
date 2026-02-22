@@ -42,3 +42,15 @@ export function createIssueComment(repoFullName, prNumber, body) {
   ]);
   return JSON.parse(out);
 }
+
+export function replyToReviewComment(repoFullName, prNumber, commentId, body) {
+  // POST /repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies
+  const out = gh([
+    'api',
+    '-X', 'POST',
+    `repos/${repoFullName}/pulls/${prNumber}/comments/${commentId}/replies`,
+    '-H', 'Accept: application/vnd.github+json',
+    '-f', `body=${body}`
+  ]);
+  return JSON.parse(out);
+}
